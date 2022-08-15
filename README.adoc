@@ -1,6 +1,8 @@
 
-== Intro
+= The hidden life of threads
 
+== Intro
+Many developers know how to start a thread. But what happens next? How to properly stop a thread? What if the thread is blocked? What if the thread started another thread is done, would the child thread be also terminated? When and how to use and re-use threads? Read this post to find answers.
 
 
 == Theory
@@ -11,30 +13,31 @@ If you know what thread is and what is the difference between parallel and concu
 
 ==== Problem
 
-Many years ago computers were big and expensive (https://en.wikipedia.org/wiki/IBM_7090[IBM 7094 costed $18 million] for example). If some program's waiting for a data from slow input device to start processing it, the very expensive CPU simply sits idle.
+Many years ago computers were big and expensive (https://en.wikipedia.org/wiki/IBM_7090[IBM 7094 costed $18 million] for example). If some program's waiting for data from the slow input device to start processing it, the very expensive CPU simply sits idle.
 
 ==== Solution
-To utilise CPU better new Operating Systems and hardware allowing to have multiple programs in memory were developed. So while one program is waiting on IO, another one having enough data could use CPU. This is how CPU could be utilised almost 100% of the time.
+To utilize CPU better new Operating Systems and hardware allowing to have multiple programs in memory were developed. So while one program is waiting on IO, another one having enough data could use CPU. This is how the CPU could be utilized almost 100% of the time.
 
 ==== Preemptive scheduling
-What if there are multiple programs ready to use CPU? Which one should run first? OSs have a https://en.m.wikipedia.org/wiki/Preemption_(computing)[preemtive scheduler] giving each program a fair share of CPU and keep all parts of the system busy. So if there are two programs PR1 and PR2, the scheduler could allow PR1 to use CPU during some time, then put it on hold and let PR2 to use CPU, then put PR2 on hold, switch to PR1 one and so on. If some program is waiting on IO, scheduler will not give CPU this program until the IO is done. So, despite the fact that there is only one CPU we have programs running simultaneously, or concurrently.
+What if there are multiple programs ready to use CPU? Which one should run first? OSs have a https://en.m.wikipedia.org/wiki/Preemption_(computing)[preemtive scheduler] giving each program a fair share of CPU and keeping all parts of the system busy. So if there are two programs PR1 and PR2, the scheduler could allow PR1 to use CPU for some time, then put it on hold and let PR2 use CPU, then put PR2 on hold, switch to PR1 one, and so on. If some program is waiting on IO, the scheduler will not give the CPU this program until the IO is done. So, even though there is only one CPU we have programs running simultaneously, or concurrently.
 
-A program with its state (allowing to know which instruction should be run next when scheduler unpause the program and what resources the program needs) is called a process. A process have one or many execution threads. A thread needs less resources than process, so on modern OS's it's cheaper to create a thread than a process.
+A program with its state (allowing to know which instruction should be run next when the scheduler unpauses the program and what resources the program needs) is called a process. A process has one or many execution threads. A thread needs fewer resources than a process, so on a modern OS, it's cheaper to create a thread than a process.
 
 ==== Concurrency vs parallelism
 
-Imagine a restraint with a waiter and a chef. The waiter is waiting for the customers to come and serve them. The chef is cooking the food. While the waiter is waiting for the customers, bringing them a menu and receiving an order, the chef is working on the orders that the waiter already brought. In our analogy, each table is a process, the order is a program to execute, the waiter and customers reading the menu are IO, the chef is CPU and the scheduler. While ingredients for a dish ordered by table 1 are cooking in boiled water, the chef could work on another dish ordered by table 2. This is how one chef executes multiple programs at the same time. This is concurrent execution. Processes (tables) can't change the order of execution, it's up to the chef to decide which program to execute next. Obviously there is a limit of orders the chef can execute at the same time. To reduce the amount of time the customers are waiting for the food, a new chef could join the team, so we have two chefs working in parallel. This is a parallel execution. Different CPU cores (chefs) can work on the same process (order) to make it faster or on different processes (orders).
+Imagine a restraint with a waiter and a chef. The waiter is waiting for the customers to come and serve them. The chef is cooking the food. While the waiter is waiting for the customers, bringing them a menu, and receiving an order, the chef is working on the orders that the waiter already brought. In our analogy, each table is a process, the order is a program to execute, the waiter and customers reading the menu are IO, and the chef is the CPU and the scheduler. While ingredients for a dish ordered by table 1 are cooking in boiled water, the chef could work on another dish ordered by table 2. This is how one chef executes multiple programs at the same time. This is concurrent execution. Processes (tables) can't change the order of execution, it's up to the chef to decide which program to execute next. There is a limit on orders the chef can execute at the same time. To reduce the amount of time the customers are waiting for the food, a new chef could join the team, so we have two chefs working in parallel. This is parallel execution. Different CPU cores (chefs) can work on the same process (order) to make it faster or on different processes (orders).
 
 NOTE: Now the waiter could be a bottleneck. The chefs can execute more orders, but they have to wait for the waiter to bring them and simply sit idle. IO can be parallel as well, but we'll take a look at it later in a separate post.
 
 == Practical
 
-In this section we'll see how to create a thread and how to use it. We use Java since this language is well known, and it has a rich set of capabilities for multithreading.
+In this section, we'll see how to create a thread and how to use it. We use Java since this language is well known, and it has a rich set of capabilities for multithreading.
 
 === How to create and use a thread?
 
-There are multiple ways to execute some piece of code concurrently, but basically it's done by creating a function that is going to be executed concurrently (or in parallel) and passing it to a (new or existing) thread. We will discuss the thread re-using a bit later. For now, let's create a thread and see how it works.
+There are multiple ways to execute some piece of code concurrently, but basically, it's done by creating a function that is going to be executed concurrently (or in parallel) and passing it to a (new or existing) thread. We will discuss the thread re-using a bit later. For now, let's create a thread and see how it works.
 
+https://github.com/konoplev/thread/blob/1af062780f7a7e22068b7fc99a0957886b3cc428/src/test/java/thread/CreateThreadTest.java#L16[link to the source code]
 [source,java,linenums]
 ----
     AtomicBoolean changed = new AtomicBoolean(false);
@@ -62,28 +65,28 @@ There are multiple ways to execute some piece of code concurrently, but basicall
 
 ----
 
-In this example, we create a thread and pass it a lambda expression that is going to be executed concurrently with the main thread. The function just changes a boolean value, so we can see in the main thread has it been executed or not.
+In this example, we create a thread and pass it a lambda expression that is going to be executed concurrently with the main thread. The function just changes a boolean value, so we can see in the main thread if it has been executed or not.
 
-In the first line we create an AtomicBoolean variable that will be used to signal the main thread that the created thread has finished. The AtomicBoolean is a special class that allows us to use atomic operations on it. We will talk about atomic operations in later posts.
+In the first line, we create an AtomicBoolean variable that will be used to signal the main thread that the created thread has finished. The AtomicBoolean is a special class that allows us to use atomic operations on it. We will talk about atomic operations in later posts.
 
 Each thread has multiple states:
 NEW - the thread has been created but not started yet (the start() method has not been called)
 RUNNABLE - the thread has been started but not yet finished
 TERMINATED - the thread has finished
 
-There are more states, but they related to synchronization, and we cover them a bit later.
+There are more states, but they are related to synchronization, and we cover them a bit later.
 
 ==== How to wait for a thread to finish?
 
-Started thread runs in parallel with the main thread. We can wait for the thread to finish by calling join() method. This method blocks the main thread until the running thread finishes. It's a blocking call, so the main thread can't continue until the thread finishes. There is an overloaded version of join() that takes a timeout parameter. If the thread doesn't finish in the given time, the main thread just continues execution.
+The started thread runs in parallel with the main thread. We can wait for the thread to finish by calling the `join()` method. This method blocks the main thread until the running thread finishes. It's a blocking call, so the main thread can't continue until the thread finishes. There is an overloaded version of join() that takes a timeout parameter. If the thread doesn't finish in the given time, the main thread just continues execution.
 
 ==== Threads synchronization
 
 So, the join() method is one of the ways to synchronize threads. The other way is to use locks (we discuss it in the next post). So far let's see how to use join() and how it changes the executing thread's state.
 
-To test it we need a long-running function that keeps a thread busy for a while (there are two methods running for 100 milliseconds and for 1 second). We would use https://xxx[not very efficient algorithm finding prime numbers] to implement it and give a big enough number to occupy CPU for a desired amount of time.
+To test it we need a long-running function that keeps a thread busy for a while (there are two methods running for 100 milliseconds and for 1 second). We would use https://xxx[not a very efficient algorithm for finding prime numbers] to implement it and give a big enough number to occupy the CPU for a desired amount of time.
 
-https://xxx[link to the test]
+https://github.com/konoplev/thread/blob/1af062780f7a7e22068b7fc99a0957886b3cc428/src/test/java/thread/CreateThreadTest.java#L41[link to the source code]
 [source,java,linenums]
 -----
       Thread thread = new Thread(() -> {
@@ -108,12 +111,13 @@ So, we covered all thread states except for BLOCKED. To discuss this state we ne
 
 ==== Thread sleep
 
-One more way to put a thread into a waiting state is to call `Thread.sleep()` method. This method blocks the thread for the given amount of time. It's a bad idea to use this method for threads synchronization, because it blocks the thread, so it's just occupying resources and doesn't do anything, and sometimes this idle time is too long, and sometimes it's too short. You never know because you don't control the scheduler.
+One more way to put a thread into a waiting state is to call `Thread.sleep()` method. This method blocks the thread for the given amount of time. It's a bad idea to use this method for threads synchronization because it blocks the thread, so it's just occupying resources and doesn't do anything, and sometimes this idle time is too long, and sometimes it's too short. You never know because you don't control the scheduler.
 
 ==== Threads interdependency
 
-What happens with a child if a parent thread started the child thread finishes? Nothing, the child thread is still running.
+What happens to a child thread if its parent thread terminates? Nothing, the child thread is still running.
 
+https://github.com/konoplev/thread/blob/1af062780f7a7e22068b7fc99a0957886b3cc428/src/test/java/thread/CreateThreadTest.java#L76[link to the source code]
 [source,java,linenums]
 ----
 AtomicBoolean calculationIsDone = new AtomicBoolean(false);
@@ -136,8 +140,9 @@ So, we know how to wait for a thread to finish, but how to force it to be stoppe
 
 The simple answer is you can't force it. Remember? You can't control the scheduler. But you can call `Thread.interrupt()` method. This method interrupts the thread. So, any method that throws an InterruptedException will probably throw this exception, and you can handle the interruption in the catch block.
 
-NOTE: I say "probably" because it realy depends on implementation. But it's a good practice to throw InterruptedException when you receive the interrupt signal.
+NOTE: I say "probably" because it really depends on implementation. But it's a good practice to throw InterruptedException when you receive the interrupt signal.
 
+https://github.com/konoplev/thread/blob/1af062780f7a7e22068b7fc99a0957886b3cc428/src/test/java/thread/StopThreadTest.java#L19[link to the source code]
 [source,java,linenums]
 ----
     AtomicBoolean exceptionCaught = new AtomicBoolean(false);
@@ -155,12 +160,13 @@ NOTE: I say "probably" because it realy depends on implementation. But it's a go
     assertThat(threadToStop.isAlive(), is(false));
 ----
 
-In the example the thread sleeps as long as it can but when it receives the interrupt signal the sleep method throws an InterruptedException.
+In the example, the thread sleeps as long as it can but when it receives the interrupt signal the sleep method throws an InterruptedException.
 
 ==== Interrupting a thread listening for input
 
-What if a thread is waiting for some input. For example, listening on a server socket (on the accept method) for incoming requests from clients? Would the accept method throw an `InterruptedIOException` or any kind of exception? The answer is no.
+What if a thread is waiting for some input? For example, listening on a server socket (on the accept method) for incoming requests from clients? Would the accept method throw an `InterruptedIOException` or any kind of exception in case the thread is interrupted? The answer is no. The exception is thrown only by methods that bring a thread into WAITING, TIMED_WAITING or BLOCKED state. The `ServerSocket.accept()` method keeps the thread in RUNNABLE state despite the fact that the thread is waiting on IO. It's not running, it's waiting but can be running. So, it's up to the developer to handle thread interruptions.
 
+https://github.com/konoplev/thread/blob/1af062780f7a7e22068b7fc99a0957886b3cc428/src/test/java/thread/StopThreadTest.java#L36[link to the source code]
 [source,java,linenums]
 ----
     AtomicBoolean exceptionCaught = new AtomicBoolean(false);
@@ -181,6 +187,7 @@ What if a thread is waiting for some input. For example, listening on a server s
     threadToStop.join(100);
     assertThat(exceptionCaught.get(), is(false));
     assertThat(threadToStop.isAlive(), is(true));
+    assertThat(threadToStop.getState(), is(State.RUNNABLE));
 
     // after interrupting we even can send input to the thread
     try (Socket socket = new Socket("localhost", port); PrintWriter out = new PrintWriter(socket.getOutputStream(),
@@ -192,14 +199,15 @@ What if a thread is waiting for some input. For example, listening on a server s
 
 ----
 
-Despite the fact that the thread is interrupted it's still alive and listening for input. We can even send a message to the socket.
+Even though the thread is interrupted it's still alive and listening for input. We can even send a message to the socket.
 
-NOTE: Not any stream reading is blocking. For example, FileInputStream can be read from beginning to end. So the thread reading from file is done as soon as the file is read.
+NOTE: Not any stream reading is blocking. For example, FileInputStream can be read from beginning to end. So the thread reading from the file is done as soon as the file is read.
 
 ==== How to handle thread interruption in a thread listening for input
 
-The golden rule is don't wait forever. Always use a timeout. It works for the Thread.join() method and it works for any input methods. Find a way to set a timeout. For socket the method is `Socket.setSoTimeout()`.
+The golden rule is "don't wait forever". Always use a timeout. It works for the Thread.join() method, and it works for any IO methods. Find a way to set a timeout. For socket the method is `Socket.setSoTimeout()`.
 
+https://github.com/konoplev/thread/blob/1af062780f7a7e22068b7fc99a0957886b3cc428/src/test/java/thread/StopThreadTest.java#L66[link to the source code]
 [source,java,linenums]
 ------
     AtomicBoolean exceptionCaught = new AtomicBoolean(false);
@@ -224,12 +232,13 @@ The golden rule is don't wait forever. Always use a timeout. It works for the Th
     assertThat(threadToStop.isAlive(), is(false));
 ------
 
-As you see there is a very small timout now and each time the timout is over the thread checks if it's interrupted. And in case of an interruption it exits the loop and stop listening for incoming connections.
+As you see there is a very small timeout now and each time the timeout is over the thread checks if it's interrupted. And in case of an interruption, it exits the loop and stops listening for incoming connections.
 
-NOTE: But what happens with clients if the timeout is over? Will the client be able to establish a connection and send a request while the thread is checking for interruption and is not waiting on the Socket.accept() method? Yes, this is how non-blocking IO works. Basically there is a buffer for the input and as soon as the thread calls accept method again it receives the next input that came while the thead was checking the interruption flag or processing the previous input.
+NOTE: But what happens with clients if the timeout is over? Will the client be able to establish a connection and send a request while the thread is checking for the interruption and is not waiting on the Socket.accept() method? Yes, this is how non-blocking IO works. Basically, there is a buffer for the input and as soon as the thread calls accept method again it receives the next input that came while the thread was checking the interruption flag or processing the previous input.
 
-==== How to stop a thread which is busy on calculating something?
+==== How to stop a thread that is busy calculating something?
 
+https://github.com/konoplev/thread/blob/1af062780f7a7e22068b7fc99a0957886b3cc428/src/test/java/thread/StopThreadTest.java#L91[link to the source code]
 [source,java,linenums]
 ------
     AtomicBoolean calculationIsDone = new AtomicBoolean(false);
@@ -248,4 +257,40 @@ No miracles, the thread is still alive and calculating. So, to process interrupt
 
 === Thread reusing
 
-The last thing to talk about is costs. Each thread occupies resources. It needs about 100 bytes of memory, for example. In needs time to be started. It gives more load to the scheduler (one more thread to schedule). So, if you have a lot of work to run in parallel it's a good idea to reuse threads.
+The last thing to talk about is costs. Each thread occupies resources. JVM allocates about 1Mb of memory for each thread. Each thread needs time to be started. It's an additional load for the scheduler (one more thread to schedule). So, if you have a lot of work to run in parallel it's a good idea to reuse threads.
+
+==== Thread pool
+
+The thread pool allows re-using threads. It's one or many pre-allocated threads and a queue of lambdas which are tasks to be executed by the threads. There are multiple ways of threads allocating, the queue can be limited or unlimited, multiple policies of what to do if the queue is full, and so on, but the basic idea is that instead of being executed immediately the task is put into the queue and some thread is scheduled to execute it.
+The task is represented by an instance of the `Callable` interface. And when the `Callable` is put into the pool the result of the execution is represented by `Future`. The `Future` is a promise that the result will be available later. It allows to check the current state of the task or call `Future.get()` to wait for the result.
+
+https://github.com/konoplev/thread/blob/1af062780f7a7e22068b7fc99a0957886b3cc428/src/test/java/thread/ReusingThreadTest.java#L14[link to the source code]
+[source,java,linenums]
+-----
+    // Create a pool of threads having only one thread.
+    ExecutorService executorService = Executors.newFixedThreadPool(1);
+    ExecutorCompletionService<String> executorCompletionService = new ExecutorCompletionService<>(executorService);
+
+    AtomicInteger executionNumber = new AtomicInteger(0);
+    Callable<String> task = () -> {
+      var threadName = Thread.currentThread().getName();
+      return "thread name: " + threadName + ", number of execution: " + executionNumber.incrementAndGet();
+    };
+
+    // Put two tasks in the queue.
+    executorCompletionService.submit(task);
+    executorCompletionService.submit(task);
+
+    Future<String> firstTaskResult = executorCompletionService.take();
+    Future<String> secondTaskResult = executorCompletionService.take();
+    assertThat(firstTaskResult.get(), is("thread name: pool-1-thread-1, number of execution: 1"));
+    assertThat(secondTaskResult.get(), is("thread name: pool-1-thread-1, number of execution: 2"));
+    executorService.shutdown();
+-----
+
+In the above example, we created a thread pool with only one thread and submitted a task that returns the name of the thread and the number of execution. We submitted the task twice, and we can see that both tasks are executed by the same thread. This is how we re-used the thread.
+
+
+== Conclusion
+
+So, now you know how to start a thread and how to wait for it to be executed. You know how to handle thread interruption and how to stop a thread that is busy calculating something or waiting for IO. You know how to use a thread pool. In the next post, we will talk about locks and synchronization. Stay tuned!

@@ -1,6 +1,7 @@
 package thread;
 
 import java.io.*;
+import java.lang.Thread.State;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.util.concurrent.ThreadLocalRandom;
@@ -52,6 +53,7 @@ public class StopThreadTest {
     threadToStop.join(100);
     assertThat(exceptionCaught.get(), is(false));
     assertThat(threadToStop.isAlive(), is(true));
+    assertThat(threadToStop.getState(), is(State.RUNNABLE));
 
     // after interrupting we even can send input to the thread
     try (Socket socket = new Socket("localhost", port); PrintWriter out = new PrintWriter(socket.getOutputStream(),
