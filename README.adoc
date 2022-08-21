@@ -70,9 +70,10 @@ In this example, we create a thread and pass it a lambda expression that is goin
 In the first line, we create an AtomicBoolean variable that will be used to signal the main thread that the created thread has finished. The AtomicBoolean is a special class that allows us to use atomic operations on it. We will talk about atomic operations in later posts.
 
 Each thread has multiple states:
-NEW - the thread has been created but not started yet (the start() method has not been called)
-RUNNABLE - the thread has been started but not yet finished
-TERMINATED - the thread has finished
+
+- NEW - the thread has been created but not started yet (the start() method has not been called)
+- RUNNABLE - the thread has been started but not yet finished
+- TERMINATED - the thread has finished
 
 There are more states, but they are related to synchronization, and we cover them a bit later.
 
@@ -84,12 +85,12 @@ The started thread runs in parallel with the main thread. We can wait for the th
 
 So, the join() method is one of the ways to synchronize threads. The other way is to use locks (we discuss it in the next post). So far let's see how to use join() and how it changes the executing thread's state.
 
-To test it we need a long-running function that keeps a thread busy for a while (there are two methods running for 100 milliseconds and for 1 second). We would use https://xxx[not a very efficient algorithm for finding prime numbers] to implement it and give a big enough number to occupy the CPU for a desired amount of time.
+To test it we need a long-running function that keeps a thread busy for a while (there are two methods running for 100 milliseconds and for 1 second). We would use https://github.com/konoplev/thread/blob/master/src/main/java/util/CpuIntensiveAlgorithm.java[some not very efficient algorithm for finding prime numbers] to implement it and give a big enough number to occupy the CPU for a desired amount of time.
 
 https://github.com/konoplev/thread/blob/1af062780f7a7e22068b7fc99a0957886b3cc428/src/test/java/thread/CreateThreadTest.java#L41[link to the source code]
 [source,java,linenums]
 -----
-      Thread thread = new Thread(() -> {
+    Thread thread = new Thread(() -> {
       // executed concurrently with main thread
       var child = new Thread(CpuIntensiveAlgorithm::run1s);
       child.start();
@@ -120,7 +121,7 @@ What happens to a child thread if its parent thread terminates? Nothing, the chi
 https://github.com/konoplev/thread/blob/1af062780f7a7e22068b7fc99a0957886b3cc428/src/test/java/thread/CreateThreadTest.java#L76[link to the source code]
 [source,java,linenums]
 ----
-AtomicBoolean calculationIsDone = new AtomicBoolean(false);
+    AtomicBoolean calculationIsDone = new AtomicBoolean(false);
     Thread childThread = new Thread(() -> {
       CpuIntensiveAlgorithm.run100Ms();
       calculationIsDone.set(true);
@@ -164,7 +165,7 @@ In the example, the thread sleeps as long as it can but when it receives the int
 
 ==== Interrupting a thread listening for input
 
-What if a thread is waiting for some input? For example, listening on a server socket (on the accept method) for incoming requests from clients? Would the accept method throw an `InterruptedIOException` or any kind of exception in case the thread is interrupted? The answer is no. The exception is thrown only by methods that bring a thread into WAITING, TIMED_WAITING or BLOCKED state. The `ServerSocket.accept()` method keeps the thread in RUNNABLE state despite the fact that the thread is waiting on IO. It's not running, it's waiting but can be running. So, it's up to the developer to handle thread interruptions.
+What if a thread is waiting for some input? For example, listening on a server socket (on the `accept()` method) for incoming requests from clients? Would the accept method throw an `InterruptedException`, `InterruptedIOException` or any kind of exception in case the thread is interrupted? The answer is no. The `InterruptedException` exception is thrown only by methods that bring a thread into WAITING or TIMED_WAITING state. The `ServerSocket.accept()` method keeps the thread in RUNNABLE state despite the fact that the thread is waiting on IO. That's what you should expect calling any IO blocking operations. The fact that you interrupted a thread waiting on IO doesn't magically tell IO to stop blocking the thread. In our example the socket doesn't know about the interruption, and it keeps listening for incoming requests and keeps blocking the thread.
 
 https://github.com/konoplev/thread/blob/1af062780f7a7e22068b7fc99a0957886b3cc428/src/test/java/thread/StopThreadTest.java#L36[link to the source code]
 [source,java,linenums]
@@ -205,7 +206,11 @@ NOTE: Not any stream reading is blocking. For example, FileInputStream can be re
 
 ==== How to handle thread interruption in a thread listening for input
 
-The golden rule is "don't wait forever". Always use a timeout. It works for the Thread.join() method, and it works for any IO methods. Find a way to set a timeout. For socket the method is `Socket.setSoTimeout()`.
+The golden rule is "don't wait forever". Always use a timeout. In the same way it works for the `Thread.join(timout)` method, and it should work for any IO methods. Find a way to set a timeout. For socket the method is `Socket.setSoTimeout()`.
+
+As soon as the timeout is set you need to implement the interruption handling. When the `interrupt()` method is called on a thread that is not in a waiting state (so, the `InterruptedException` is not thrown), the method sets the interrupted flag of the thread to true. The flag can be checked by calling `Thread.isInterrupted()`. So, the interrupted thread can handle the interruption (for example close any open resources and exit). In our example all open resources are closed automatically (by the try-with-resources), so the thread just need to stop listen on the `accept()` method.
+
+NOTE: If there is no way to set the timout, the client interrupting the thread should close the IO operation before the interruption. Otherwise, the thread will be stuck in the blocking method. From design point of view, it's not good to let client know about internal thread details. So, the timout is preferable, since it keeps internal details encapsulated and client is not aware of any IO, it just know that there is some job that has to be interrupted.
 
 https://github.com/konoplev/thread/blob/1af062780f7a7e22068b7fc99a0957886b3cc428/src/test/java/thread/StopThreadTest.java#L66[link to the source code]
 [source,java,linenums]
@@ -234,7 +239,7 @@ https://github.com/konoplev/thread/blob/1af062780f7a7e22068b7fc99a0957886b3cc428
 
 As you see there is a very small timeout now and each time the timeout is over the thread checks if it's interrupted. And in case of an interruption, it exits the loop and stops listening for incoming connections.
 
-NOTE: But what happens with clients if the timeout is over? Will the client be able to establish a connection and send a request while the thread is checking for the interruption and is not waiting on the Socket.accept() method? Yes, this is how non-blocking IO works. Basically, there is a buffer for the input and as soon as the thread calls accept method again it receives the next input that came while the thread was checking the interruption flag or processing the previous input.
+NOTE: But what happens with clients if the timeout is over? Will the client be able to establish a connection and send a request while the thread is checking for the interruption and is not waiting on the `Socket.accept()` method? Yes, this is how non-blocking IO works. Basically, there is a buffer for the input and as soon as the thread calls accept method again it receives the next input that came while the thread was checking the interruption flag or processing the previous input.
 
 ==== How to stop a thread that is busy calculating something?
 
